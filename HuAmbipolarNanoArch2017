@@ -1,0 +1,183 @@
+// Verilog-A Model for "Transient Model With Interchangeability for Dual-Gate Ambipolar CNTFET Logic Design"
+// NanoArch 2017
+// Xuan Hu and Joseph S. Friedman
+// The University of Texas at Dallas
+// Sept 06, 2017
+
+
+
+`include "constants.vams"
+`include "disciplines.vams"
+
+module CNT4_transient(A, B, FG, BG);		//Define model with 4 terminals
+											//A and B are representing the Source and Drain correspondingly or reversely, depends on the terminal voltages
+ 											//The interchangeability between the Source and Drain nodes is used to converge the model as well as get the correct results
+											//Front Gate (FG), also known as the Top Gate or the Control Gate, in some other dual-gate devices
+											//Bottom Gate (BG), refer to Back Gate or Polarity Gate, can be used to tune the carrier density of the device
+
+
+inout A, B, FG, BG;	
+
+electrical A, B, FG, BG;
+
+parameter real M = 1;						//Multiple (M) devices are placed in parallel to increase the drive capability. M is used to increase the simplicity of schematic design. 
+
+parameter real Vthp = 0.1;					//Top gate (FG) threshold voltage, for p-typre conduction
+parameter real Vthn = 0.1;					//Top gate (FG) threshold voltage, for p-typre conduction
+
+parameter real VB_th = 0;					//Bottom gate (BG) threshold voltage
+
+parameter real Con_n = 30E-11;				//Con_n and Con_p are fitting parameters for n- and p-type conduction respectively
+parameter real Con_p = 30E-11;
+
+parameter real In_min = 10E-16;				//Minimum n-type and p-type current through the device, modeling cut-off bahavior, leakage and help converge the model
+parameter real Ip_min = 10E-16;
+
+parameter real Coe_DS = 5;					//Drain-Source nonidealy factor, modeling the linear part, refer to channel modulation effect in standard CMOS
+parameter real Roff = 1E6;				//Cut-off resistance through the channel. 
+parameter real Coe_fixed_DS = 0.2;			//Minimum Drain-Source nonidealy factor, modeling the fixed part
+
+
+real VFGA;									//Effect voltage difference from FG to A
+real VFGB;									//Effect voltage difference from FG to B
+real In;									//current introduced by n-type carrier
+real Ip;									//current introduced by p-type carrier
+real VAB;									//voltage difference between node A and B
+
+real Iout;
+
+real Con_n_eff;								//effective fitting parameter for n
+real Con_p_eff;								//effective fitting parameter for n
+
+analog begin
+VFGA = V(FG, A);							//voltage assignment
+VFGB = V(FG, B);
+VAB = V(A, B);
+
+
+//Switch A/B node by detecting the V(A,B). It'll help determing whether voltage is used to calculate current
+
+//If Veff is a minus value, 'if' statements are used to limit the current to a fixed minimum level rather than a bounced back current
+//that statements are also necessary for BG current
+
+
+
+
+if(VAB>0)									//Input combination that VA > VB
+begin
+
+Con_n_eff = Con_n * (0.1 + (V(BG, B) - VB_th));			//calculate effective conduction
+Con_p_eff = Con_p * (0.1 + (V(A, BG) + VB_th));
+
+
+
+	if((Con_n_eff > Con_p_eff) && (V(FG, B)>Vthn))		//based on the effective conduction parameters, either n- or p-type conduction are chosed for the model
+	begin
+	In = Con_n_eff * pow((V(FG, B) - Vthn), 2) * pow((0.01 + (V(BG, B) - VB_th)), 2) * (Coe_fixed_DS+ Coe_DS * V(A, B));
+	end
+
+	else
+	begin
+	In = V(A, B) / Roff;
+	end
+
+
+	if((Con_p_eff > Con_n_eff) && (V(A, FG)>Vthp))
+	begin
+	Ip = Con_p_eff * pow((V(A, FG) - Vthp), 2) * pow((0.01 + (V(A, BG) - VB_th)), 2) * (Coe_fixed_DS+ Coe_DS * V(A, B));
+	end
+
+	else
+	begin
+	Ip = V(A, B) / Roff;
+	end
+
+if(Con_n_eff<0)											//limiting the minimum current 
+begin
+Con_n_eff=0;
+In = V(A, B) / Roff;
+end
+
+
+if(Con_p_eff<0)
+begin
+Con_p_eff=0;
+Ip = V(A, B) / Roff;
+end
+
+
+
+end
+
+
+
+else if(VAB<0)										//another input combinations that makes VB > VA
+begin
+
+Con_n_eff = Con_n * (0.1 + (V(BG, A) - VB_th));
+
+Con_p_eff = Con_p * (0.1 + (V(B, BG) + VB_th));
+
+
+
+
+	if((Con_n_eff > Con_p_eff) && (V(FG, A)>Vthn))
+	begin
+	In = -Con_n_eff * pow((V(FG, A) - Vthn), 2) * pow((0.01 + (V(BG, A) - VB_th)), 2) * (Coe_fixed_DS+ Coe_DS * V(B, A));
+	end
+	else
+	begin
+	In = V(A, B) / Roff;
+	end
+	
+	if((Con_p_eff > Con_n_eff) && (V(B, FG)>Vthp))
+	begin
+	Ip = -Con_p_eff * pow((V(B, FG) - Vthp), 2) * pow((0.01 + (V(B, BG) - VB_th)), 2) * (Coe_fixed_DS+ Coe_DS * V(B, A));
+	end
+	else
+	begin
+	Ip = V(A, B) / Roff;
+	end
+
+
+
+if(Con_p_eff<0)
+begin
+Con_p_eff=0;
+Ip = V(A, B) / Roff;
+end
+
+if(Con_n_eff<0)
+begin
+Con_n_eff=0;
+In = V(A, B) / Roff;
+end
+
+
+
+
+end
+
+else
+begin
+In=0;
+Ip=0;
+end
+
+
+
+
+if(abs(In)>abs(Ip))					//Device either n- or p-typre current is used as the output of entire model calculation
+begin
+Iout = M* In;
+end
+else
+begin
+Iout = M* Ip;
+end
+
+
+I(A, B) <+ transition (Iout, 1p, 1p, 1p);
+end
+
+endmodule
