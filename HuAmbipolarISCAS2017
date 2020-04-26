@@ -1,0 +1,115 @@
+// Verilog-A Model for "Closed-Form Model for Dual-Gate Ambipolar CNTFET Circuit Design"
+// ISCAS 2017
+// Xuan Hu and Joseph S. Friedman
+// The University of Texas at Dallas
+// March 10, 2017
+
+`include "constants.vams"
+`include "disciplines.vams"
+
+module CNT4(D,S,CG,PG);		//Defined model with 4 terminals
+				//Drain (D) and Source (S) are defined as current-conducting terminals
+				//Control Gate (CG) is also known as Top Gate in some dual-gate devices
+				//and Polarity Gate (PG) is the corresponding Bottom Gate or Back Gate 
+inout D,S,CG,PG;
+
+electrical D,S,CG,PG;
+
+parameter real Vctn=0.0;	//Control gate threshold voltage, for n-type conduction
+parameter real Vptn=-0.2;	//Polarity gate threshold voltage, for n-type conduction
+parameter real Vctp=-0.9;	//Control gate threshold voltage, for p-type conduction
+parameter real Vptp=-0.65;	//Polarity gate threshold voltage, for p-type conduction
+
+parameter real Kp=10E-9;	//Kp and Kn are fitting parameters, representing the conductivity of  
+parameter real Kn=0.2*10E-10;	//certain type of carrier, for p- and n- respectively
+
+parameter real KK0=10E-16;	//Fitting parameter of cut-off state, to ensure convergence
+
+parameter real Veffmin=10E-20;	//Minimum effective voltage, to ensure convergence
+
+integer MK_Typ;			//Inner parameter, as Flag (Mark)
+integer MK_Pol;
+
+real Vcgs;			//Vcgs and Vpgs stand for voltage applied to CG and PG
+real Vpgs;
+real Veffc;
+real Veffp;
+real Vds;
+real Idd;
+real KK;
+real Rds;			//Rds models source-drain current with a pseudo-resistor to ensure convergence
+
+
+
+
+//***********************************************************************************
+
+analog begin
+
+Vcgs = V(CG)-V(S);
+Vpgs = V(PG)-V(S);
+Vds = V(D)-V(S);
+
+
+if(Vpgs>Vptn) MK_Pol=1;
+else if(Vpgs<Vptp) MK_Pol=-1;
+else MK_Pol=0;
+
+Regionn=MK_Pol;
+
+if (Vpgs<Vptp) 
+begin
+
+Veffc=Vcgs-Vctp; 
+if(Veffc>-Veffmin)
+begin
+Veffc=Veffmin;
+end
+
+Veffp=Vpgs-Vptp;
+if(Veffp>-Veffmin)
+begin
+Veffp=Veffmin;
+end
+
+ 
+KK=Kp;
+end
+
+else if (Vpgs>Vptn)
+begin
+Veffc=Vcgs-Vctn;
+if(Veffc<Veffmin)
+begin
+Veffc=Veffmin;
+end
+ 
+Veffp=Vpgs-Vptn; 
+if(Veffp<Veffmin)
+begin
+Veffp=Veffmin;
+end
+
+
+KK=Kn;
+end
+
+else 
+begin
+Veffc=10E-20; 
+Veffp=10E-20; 
+KK=KK0;
+end
+
+
+
+
+Idd = abs(Veffp*Veffp*Veffc*Veffc)*KK;
+Rds=0.6/Idd;
+I(D,S) <+ Vds/Rds;
+
+
+
+end
+
+endmodule
